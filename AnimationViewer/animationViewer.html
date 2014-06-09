@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Animation Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            color: #ddd;
+            font-family:Monospace;
+            font-size:13px;
+            text-align:center;
+
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+        }
+        .panel:hover
+        {
+            background-color: rgba(0, 33, 52, 0.90);
+        }
+
+        .panel
+        {
+            padding: 1px;
+            margin: 5px;
+            min-width: 272px;
+            background-color: rgba(0, 33, 52, 0.6);
+            border: solid 2px rgba(33,33,33,.8);
+        }
+
+        .toggler-header-collapsed:before {
+            content: "+";
+            margin: 0 4px;
+        }
+
+        .toggler-header-expanded:before {
+            content: "-";
+            margin: 0 6px;
+        }
+        .toggler-header-expanded
+        {
+            margin-bottom: 8px;
+        }
+
+        .toggler-header-collapsed
+        {
+            margin-bottom: 0px;
+        }
+
+        input, textarea, keygen, select, button, isindex {
+            font-family: monospace;
+        }
+
+        .panelTitle:hover
+        {
+            cursor: pointer;
+            background-color: #005580;
+        }
+
+        .panelContent
+        {
+            max-height: 350px;
+            overflow: overlay;
+        }
+
+
+        .heading
+        {
+            font-weight: bold;
+            font-size: x-large;
+            text-align: center;
+            background-color: #002e4c;
+            border-bottom: 6px groove rgba(221, 221, 221, 0.21);
+            border-left: 2px solid rgba(221, 221, 221, 0.21);
+            border-right: 3px groove rgba(221, 221, 221, 0.21);
+            border-top: 2px ridge rgba(221, 221, 221, 0.21);
+        }
+
+        .panelTitle
+        {
+            text-align: center;
+            background-color: #002e4c;
+            font-weight: bold;
+            border-bottom: 6px groove rgba(221, 221, 221, 0.21);
+            border-left: 2px solid rgba(221, 221, 221, 0.21);
+            border-right: 3px groove rgba(221, 221, 221, 0.21);
+            border-top: 2px ridge rgba(221, 221, 221, 0.21);
+        }
+
+        #boneListing{
+            text-align: right;
+            float:right;
+            clear:right;
+        }
+
+        #geometryPanel
+        {
+            text-align: right;
+            float:right;
+            clear:right;
+        }
+        #rigPanel
+        {
+            text-align: right;
+            float:right;
+            clear:right;
+        }
+        #animationImportPanel
+        {
+            text-align: right;
+            float:right;
+            clear:right;
+        }
+
+        #animationControlPanel {
+            text-align: left;
+            float:left;
+            clear:left;
+        }
+
+        .subHeading {
+            text-align: left;
+            font-weight: bold;
+            margin-top: 4px;
+            margin-bottom: 6px;
+            font-size: larger;
+        }
+        .subHeading:before{
+            content: "[";
+        }
+        .subHeading:after {
+            content: "]";
+        }
+
+        #texturePanel{
+            float:left;
+            clear:left;
+        }
+
+        .spacingPane {
+            height:100px;
+        }
+        #settingsPanel {
+            text-align: justify;
+            float: right;
+            clear: right;
+        }
+
+        #info {
+            position: absolute;
+            top: 0; width: 50%;
+            padding: 5px;
+            left: 25%;
+        }
+        a {
+            color: #df0000;
+        }
+
+        input[type="color"]
+        {
+            border: none;
+            padding: 0;
+            background-color: transparent;
+            margin: 2px;
+        }
+        #leftColumn
+        {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        #rightColumn
+        {
+            position: absolute;
+            right: 0;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+<div id="info"><div class="panel"><div class="heading">Animation Viewer</div></div>
+    <b>Drag .js animation files, and textures onto this screen</b><br>
+    <a href="http://blacktowerentertainment.com/blog">Black Tower Entertainment</a><br>
+</div>
+<div id="rightColumn">
+    <div class="spacingPane"></div>
+    <div id="settingsPanel" class="panel">
+        <div class="panelTitle">Configuration</div>
+        <div class="panelContent">
+            <div class="subHeading">Render</div>
+            <button onclick="animationViewer.ToggleBoneVisibility()">DebugInfo</button>
+            <button onclick="animationViewer.ToggleModelVisibility()">ModelInfo</button>
+            <button onclick="animationViewer.ToggleWireframe()">Wireframe</button>
+            <div class="subHeading">Background Color</div>
+            <form>
+            <input type="color" id="inputBackgroundColor">
+            <div class="subHeading">Material</div>
+                <label>Color</label><input type="color" id="materialColor">
+                Ambient<input type="color" id="materialAmbientColor">
+                Emissive<input type="color" id="materialEmissiveColor">
+                <div class="subHeading">Light</div>
+                Ambient<input type="color" id="ambientLightColor">
+                Directional<input type="color" id="directionalLightColor">
+            </form>
+        </div>
+    </div>
+
+    <div id="boneListing" class="panel">
+        <div class="panelTitle">Bone Attachments</div>
+        <div class="panelContent" id="bonePanel">
+            <a class="testButton" href="#">Load TestModel</a>
+        </div>
+    </div>
+
+    <div id="geometryPanel" class="panel">
+        <div class="panelTitle">Geometry</div>
+        <div class="panelContent">
+            Drag geometry data here
+        </div>
+    </div>
+
+    <div id="rigPanel" class="panel">
+        <div class="panelTitle">Rig</div>
+        <div class="panelContent">
+            Drag your rig here
+        </div>
+    </div>
+
+    <div id="animationImportPanel" class="panel">
+        <div class="panelTitle">Animations</div>
+        <div class="panelContent">
+            Drag animations here
+        </div>
+    </div>
+</div>
+<div id="leftColumn">
+    <div class="spacingPane"></div>
+    <div id="texturePanel" class="panel">
+        <div class="panelTitle">Texture</div>
+        <div class="panelContent">
+            <div id="textureDiv">
+                <img width="256px" height="256px" id="textureImage">
+                <br><span>Drag image here to load</span>
+            </div>
+        </div>
+    </div>
+    <div id="animationControlPanel" class="panel">
+        <div class="panelTitle">Animation</div>
+        <div class="panelContent">
+            <div class="subHeading">Active Animation</div>
+            <div id="animationPanelContent">
+                <a class="testButton" href="#">Load TestModel</a>
+            </div>
+            <div class="subHeading">Animation Speed</div>
+            <select id="speedSelect">
+                <option name=".25">(.125)x</option>
+                <option name=".25">(.25)x</option>
+                <option name=".33">(.33x)</option>
+                <option name=".5">(.5x)</option>
+                <option name="1" selected="selected">(1x)</option>
+                <option name="2">(2x)</option>
+                <option name="3">(4x)</option>
+                <option name="4">(8x)</option>
+            </select>
+            <div class="subHeading">Animation</div>
+            <button onclick="animationViewer.ToggleAnimation()">Toggle Play</button>
+            <button onclick="animationViewer.stepAnimation()">Step</button>
+        </div>
+    </div>
+</div>
+<div id="container"></div>
+<script src="js/libs/three.min.js"></script>
+<script src="js/libs/stats.min.js"></script>
+<script src="js/libs/OrbitControls.js"></script>
+<script>
+    AnimationViewer = function()
+    {
+        this.clock = new THREE.Clock();
+        this.animationSpeed = 1.0;
+    };
+
+    AnimationViewer.prototype =
+    {
+        constructor: AnimationViewer
+    };
+
+    ColorUI = function(domId, changeCallback)
+    {
+        this.node = document.getElementById(domId);
+        this.node.onchange = changeCallback;
+    };
+
+    ColorUI.prototype =
+    {
+        constructor : ColorUI,
+
+        Get : function()
+        {
+            return new THREE.Color(this.node.value);
+        },
+
+        Set : function(color)
+        {
+            this.node.value = "#" + color.getHexString();
+        }
+    };
+
+    AnimationViewer.prototype.SetupColorUI = function()
+    {
+        var self = this;
+        this.ambientLightColorUI =  new ColorUI("ambientLightColor",
+            function(event)
+            {
+                self.ambientLight.color = self.ambientLightColorUI.Get();
+            }
+        );
+        this.directionalLightColorUI =  new ColorUI("directionalLightColor",
+            function(event)
+            {
+                if(self.mesh)
+                    self.directionalLight.color = self.directionalLightColorUI.Get();
+            }
+        );
+        this.materialColorUI =  new ColorUI("materialColor",
+            function(event)
+            {
+                if(self.mesh)
+                    self.mesh.material.color = self.materialColorUI.Get();
+            }
+        );
+        this.materialEmissiveColorUI =  new ColorUI("materialEmissiveColor",
+            function(event)
+            {
+                if(self.mesh)
+                    self.mesh.material.emissive.setStyle(event.target.value);
+            }
+        );
+        this.materialAmbientColorUI =  new ColorUI("materialAmbientColor",
+            function(event)
+            {
+                if(self.mesh)
+                    self.mesh.material.ambient.setStyle(event.target.value);
+            }
+        );
+        this.backgroundColorUI =  new ColorUI("inputBackgroundColor",
+            function(event)
+            {
+                self.renderer.setClearColor(event.target.value);
+            }
+        );
+        //Set Default Colors
+        this.ambientLightColorUI.Set(new THREE.Color(0xFFFFFF));
+        this.directionalLightColorUI.Set(new THREE.Color(0xFFFFFF));
+        this.materialColorUI.Set(new THREE.Color(0xFFFFFF));
+        this.materialAmbientColorUI.Set(new THREE.Color(0xDDDDDD));
+        this.materialEmissiveColorUI.Set(new THREE.Color(0x000000));
+        this.backgroundColorUI.Set(new THREE.Color(0x353535));
+    };
+
+    AnimationViewer.prototype.Setup = function()
+    {
+        this.SetupExampleButtons("example_models/example_model.js");
+        this.SetupPanels();
+        this.SetupColorUI();
+        this.SetupFileDrops();
+        //Add speed select onchange
+        document.getElementById("speedSelect").onchange = function(event)
+        {
+            animationViewer.SetAnimationSpeed(parseFloat(event.target.selectedOptions[0].attributes[0].nodeValue));
+        };
+    };
+
+    AnimationViewer.prototype.SetAnimationSpeed = function(speed)
+    {
+        this.animationSpeed = speed;
+    };
+
+    AnimationViewer.prototype.SetupFileDrops = function()
+    {
+        document.addEventListener('dragover',
+            function(event)
+            {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+            }, false);
+        document.addEventListener('drop',
+            function(event)
+            {
+                event.preventDefault();
+                LoadFile(event.dataTransfer.files[0]);
+            }, false);
+    };
+
+    AnimationViewer.prototype.SetupPanels = function()
+    {
+        var divs = document.getElementsByClassName("panel");
+        for(var id = 0; id < divs.length; ++id)
+        {
+            if(divs[id].children[1])
+            {
+                if(!divs[id].children[0].classList.contains("toggler-header-expanded") && !divs[id].children[0].classList.contains("toggler-header-collapsed"))
+                    divs[id].children[0].classList.add("toggler-header-expanded");
+                divs[id].children[0].addEventListener("click", function(event)
+                {
+                    var headerNode = event.target.parentNode.children[0];
+                    var contentNode = event.target.parentNode.children[1];
+
+                    if(headerNode.classList.contains("toggler-header-expanded"))
+                    {
+                        headerNode.classList.remove("toggler-header-expanded");
+                        headerNode.classList.add("toggler-header-collapsed");
+                        contentNode.style.display = "none";
+                    }
+                    else
+                    {
+                        headerNode.classList.remove("toggler-header-collapsed");
+                        headerNode.classList.add("toggler-header-expanded");
+                        contentNode.style.display = "inherit";
+                    }
+                });
+            }
+        }
+    };
+
+    AnimationViewer.prototype.SetupExampleButtons = function(filename)
+    {
+        var buttons = document.getElementsByClassName("testButton");
+        for(var id = 0; id < buttons.length; ++id)
+        {
+            buttons[id].addEventListener("click", function(event)
+            {
+                var jsonLoader = new THREE.JSONLoader();
+                jsonLoader.load(filename, function(geometry)
+                {
+                    animationViewer.InstanceMesh(geometry);
+                });
+            });
+        }
+    };
+
+    AnimationViewer.prototype.SetTexture = function(texture)
+    {
+        this.texture = texture;
+    };
+
+    AnimationViewer.prototype.GenerateAnimationMenu = function(mesh)
+    {
+        if(!mesh.geometry.animations && !mesh.geometry.animation)
+            return;
+        var rootNode = document.getElementById("animationPanelContent");
+        rootNode.innerHTML = "";
+        this.selectAnimNode = document.createElement("select");
+        if(mesh.geometry.animations)
+        {
+            var length = mesh.geometry.animations.length;
+            for(var i = 0; i < length; ++i)
+            {
+                var animation = mesh.geometry.animations[i];
+                var name = animation.name;
+
+                //Create dom option with <option value=i>name</option>
+                var node = document.createElement("option");
+                node.name = i;
+                node.innerHTML = name;
+                this.selectAnimNode.appendChild(node);
+            }
+
+        }
+        else
+        {
+            node = document.createElement("option");
+            node.name = 0;
+            node.innerHTML = mesh.geometry.animation.name;
+            this.selectAnimNode.appendChild(node);
+        }
+        this.selectAnimNode.onchange = function(event)
+        {
+            animationViewer.PlayAnimation(event.target.selectedOptions[0].innerHTML);
+        };
+        rootNode.appendChild(this.selectAnimNode);
+    };
+
+    AnimationViewer.prototype.GenerateBoneListing = function(bones)
+    {
+        if(!bones)
+            return;
+        var rootNode = document.getElementById("bonePanel");
+        rootNode.innerHTML = "";
+        var length = bones.length;
+        for(var i = 0; i < length; ++i)
+        {
+            var bone = bones[i].userData;
+            var boneNode = document.createElement("div");
+            boneNode.appendChild(document.createTextNode("["+bone.name + "]"));
+            var button = document.createElement("input");
+            button.type = "file";
+            button.name = i;
+            button.addEventListener("change", function(event)
+            {
+                //Add file to bone node
+                if(event.target.files[0])
+                {
+                    var file = event.target.files[0];
+                    LoadFile(file, bones[event.target.name]);
+                }
+            });
+            boneNode.appendChild(button);
+            rootNode.appendChild(boneNode);
+        }
+    };
+
+    AnimationViewer.prototype.PlayAnimation = function(name)
+    {
+        if(!name && name == "")
+            return;
+        if(this.animation)
+            this.animation.stop();
+        var mesh = this.mesh;
+        if(!mesh)
+            return;
+        this.animation = new THREE.Animation(
+                this.mesh,
+                name);
+        this.animation.play();
+    };
+
+    AnimationViewer.prototype.Initialize = function()
+    {
+        this.container = document.getElementById("container");
+        this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+        this.camera.position.set(0, 105, 450);
+        this.camera.lookAt(new THREE.Vector3());
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(this.backgroundColorUI.Get(), 0.0003);
+        this.boneScene = new THREE.Scene();
+        this.directionalLight = new THREE.DirectionalLight(this.directionalLightColorUI.Get(),1.0);
+        this.directionalLight.position.set(40, -4, -4).normalize();
+        this.scene.add(this.directionalLight);
+        this.ambientLight = new THREE.AmbientLight(this.ambientLightColorUI.Get());
+        this.scene.add(this.ambientLight);
+        this.renderer = new THREE.WebGLRenderer({antialias: true});
+        this.renderer.setClearColor(this.scene.fog.color, 1);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.sortObjects = true;
+        this.renderer.domElement.tabIndex = 0;
+        this.orbitControls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+        this.gridHalfSize = 320;
+        this.gridSubDivisions = 32;
+        this.gridHeight = 5;
+        this.grid = new THREE.GridHelper(this.gridHalfSize, this.gridSubDivisions);
+        this.grid.setColors(new THREE.Color("rgb(90,90,90)"), new THREE.Color("rgb(140,150,150)"));
+        this.scene.add(this.grid);
+        this.stats = new Stats();
+        this.stats.domElement.style.position = 'absolute';
+        this.stats.domElement.style.top = '0px';
+        this.container.appendChild(this.renderer.domElement);
+        this.container.appendChild(this.stats.domElement);
+        this.animating = true;
+        window.addEventListener('resize', this.OnWindowResize.bind(this), false);
+        this.Animate();
+
+    };
+
+
+    AnimationViewer.prototype.OnWindowResize = function()
+    {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize( window.innerWidth, window.innerHeight );
+    };
+
+    AnimationViewer.prototype.Update = function()
+    {
+        var delta = this.clock.getDelta();
+        if(this.animating)
+            THREE.AnimationHandler.update( delta * this.animationSpeed );
+        this.stats.update();
+        this.orbitControls.update();
+        var rotationMatrix = new THREE.Matrix4();
+
+        if(this.bones)
+        {
+            var numBones = this.bones.length;
+            for(var j = 0; j < numBones; ++j)
+            {
+                var bone = this.bones[j];
+                var skinMatrix = (this.mesh.bones[j].skinMatrix);
+                rotationMatrix.extractRotation(skinMatrix);
+                bone.position.setFromMatrixPosition(skinMatrix);
+                bone.rotation.setFromRotationMatrix(rotationMatrix);
+                bone.scale.setFromMatrixScale(skinMatrix);
+                var boneConnectionLength = bone.children.length-1;
+                for(var i = 0; i < boneConnectionLength; ++i)
+                {
+                    var child = this.mesh.bones[j].children[i];
+                    var childHelper = bone.children[i+1];
+                    childHelper.setLength(child.position.length());
+                    childHelper.setDirection(new THREE.Vector3(child.position.x,child.position.y,child.position.z).normalize());
+                }
+            }
+
+            var numAttachedObjects = this.attachedObjects.length;
+            for(j = 0; j < numAttachedObjects; ++j)
+            {
+                var object = this.attachedObjects[j];
+                object.position = object.userData.position;
+                object.rotation = object.userData.rotation;
+                object.scale = object.userData.scale;
+            }
+        }
+    };
+
+    AnimationViewer.prototype.Animate = function()
+    {
+        requestAnimationFrame(this.Animate.bind(this), this.renderer.domElement);
+        this.Update();
+        this.renderer.clear(true, true, true);
+        this.renderer.autoClear = false;
+        this.renderer.render( this.scene, this.camera );
+        this.renderer.clear(false, true, true);
+        this.renderer.render( this.boneScene, this.camera );
+        this.renderer.autoClear = true;
+    };
+
+    AnimationViewer.prototype.SetScene = function(scene)
+    {
+        this.scene = scene;
+    };
+
+    AnimationViewer.prototype.InstanceMesh = function(geometry, parentParam)
+    {
+        var numBones, j, normalMat, mesh, color, emissiveColor, ambientColor;
+        if(this.mesh && !parentParam)
+        {
+            this.scene.remove(this.mesh);
+            if(this.mesh.bones)
+            {
+                numBones = this.mesh.bones.length;
+                for(j = 0; j < numBones; ++j)
+                {
+                    this.boneScene.remove(this.bones[j]);
+                }
+
+                var numAttachedObjects = this.attachedObjects.length;
+                for(j = 0; j < numAttachedObjects; ++j)
+                {
+                    this.scene.remove(this.attachedObjects[j]);
+                    this.attachedObjects = [];
+                }
+            }
+            this.bones = [];
+        }
+        if(geometry)
+        {
+            geometry.buffersNeedUpdate = true;
+            geometry.uvsNeedUpdate = true;
+            if (geometry.animation || geometry.animations || geometry.bones)
+            {
+                AddAnimationsToHandler(geometry);
+                color = this.materialColorUI.Get();
+                emissiveColor = this.materialEmissiveColorUI.Get();
+                ambientColor = this.materialAmbientColorUI.Get();
+                normalMat = new THREE.MeshLambertMaterial({ emissive: emissiveColor, color: color, ambient : ambientColor, skinning : true});
+                if(this.texture)
+                    normalMat.map = this.texture;
+                mesh = new THREE.SkinnedMesh(geometry, normalMat, false);
+            }
+            else
+            {
+                color = this.materialColorUI.Get();
+                emissiveColor = this.materialEmissiveColorUI.Get();
+                ambientColor = this.materialAmbientColorUI.Get();
+                normalMat = new THREE.MeshLambertMaterial({ emissive: emissiveColor, color: color, ambient:ambientColor});
+                if(this.mesh && this.mesh.material.map)
+                    normalMat.map = this.mesh.material.map;
+                mesh = new THREE.Mesh(geometry, normalMat, false);
+            }
+            this.meshVisible = true;
+
+            //Generate rig data
+            if(!parentParam)
+            {
+                if(mesh.bones && mesh.bones.length > 0)
+                {
+                    numBones = mesh.bones.length;
+                    this.bones = [];
+                    this.attachedObjects = [];
+                    for(j = 0; j < numBones; ++j)
+                    {
+                        var bone = mesh.bones[j];
+                        var sphereGeometry = new THREE.SphereGeometry(0.5);
+                        var boneMeshDebug = new THREE.Mesh(sphereGeometry, new THREE.MeshNormalMaterial());
+                        boneMeshDebug.material.wireframe = true;
+                        boneMeshDebug.position.copy(new THREE.Vector3().applyMatrix4(bone.skinMatrix));
+                        this.boneScene.add(boneMeshDebug);
+                        //Add transform helper
+                        var axisHelper = new THREE.AxisHelper( 7 );
+                        boneMeshDebug.add(axisHelper);
+
+                        var childLen = bone.children.length;
+                        for(var i = 0; i < childLen; ++i)
+                        {
+                            var child = bone.children[i];
+                            var lineLength = child.position.length();
+                            var arrowHelper = new THREE.ArrowHelper(child.position, new THREE.Vector3(), lineLength, 0xDD00AA);
+                            boneMeshDebug.add(arrowHelper);
+                            arrowHelper.name = child.name;
+                        }
+
+                        boneMeshDebug.userData = mesh.bones[j];
+                        this.bones[j] = boneMeshDebug;
+                    }
+                    this.GenerateBoneListing(this.bones);
+                    this.GenerateAnimationMenu(mesh);
+                    this.geometry = geometry;
+                    this.bonesVisible = true;
+                }
+            }
+        }
+        if(this.camera && !parentParam)
+        {
+            if(mesh && mesh.geometry)
+            {
+                mesh.geometry.computeBoundingSphere();
+                this.camera.lookAt(mesh.geometry.boundingSphere.center);
+                this.orbitControls.target = mesh.geometry.boundingSphere.center;
+            }
+        }
+        if(parentParam )
+        {
+            mesh.userData = parentParam;
+            this.attachedObjects.push(mesh);
+            this.scene.add(mesh);
+        }
+        else
+        {
+            this.scene.add(mesh);
+            this.mesh = mesh;
+        }
+        if(this.selectAnimNode)
+            if(this.selectAnimNode.children.length > 0)
+                this.PlayAnimation(this.selectAnimNode.children[0].innerHTML);
+    };
+
+    AnimationViewer.prototype.ToggleAnimation = function()
+    {
+        if(!this.bones)
+            return;
+        this.animating = !this.animating;
+    };
+
+    AnimationViewer.prototype.stepAnimation = function()
+    {
+        if(!this.animating)
+            THREE.AnimationHandler.update( 1/30 );
+    };
+
+    AnimationViewer.prototype.ToggleBoneVisibility = function()
+    {
+        if(!this.bones)
+            return;
+        this.bonesVisible = !this.bonesVisible;
+        var visibility = this.bonesVisible;
+        var length = this.mesh.bones.length;
+        for(var j = 0; j < length; ++j)
+        {
+            this.bones[j].visible = visibility;
+            this.bones[j].traverse(function(object)
+            {
+                object.visible = visibility;
+            });
+        }
+    };
+
+    AnimationViewer.prototype.ToggleModelVisibility = function()
+    {
+        if(!this.mesh)
+            return;
+        this.meshVisible = !this.meshVisible;
+        this.mesh.visible = this.meshVisible;
+    };
+
+    AnimationViewer.prototype.ToggleWireframe = function()
+    {
+        if(this.mesh)
+        {
+            var wireframe = !this.mesh.material.wireframe;
+            this.mesh.material.wireframe = !wireframe;
+            this.mesh.traverse(function(object)
+            {
+               if(object.material)
+                    object.material.wireframe = wireframe;
+            });
+        }
+    };
+
+    AnimationViewer.prototype.AddObject = function( object, parentParam)
+    {
+        this.InstanceMesh(object.geometry, parentParam);
+    };
+
+    AddAnimationsToHandler = function(geometry)
+    {
+        if(geometry.animation)
+        {
+            THREE.AnimationHandler.add(geometry.animation);
+        }
+        else if(geometry.animations)
+        {
+            var length = geometry.animations.length;
+            for(var i = 0; i < length; ++i)
+            {
+                THREE.AnimationHandler.add(geometry.animations[i]);
+            }
+        }
+    };
+
+var animationViewer = new AnimationViewer();
+animationViewer.Setup();
+animationViewer.Initialize();
+
+///////////////////////////////////////////////////////
+//from three.js loader
+///////////////////////////////////////////////////////
+LoadFile = function (file, parentParam)
+{
+    var reader;
+    if(!file)
+        return;
+    var filename = file.name;
+    var extension = filename.split( '.' ).pop().toLowerCase();
+
+    switch ( extension ) {
+        case 'jpg':
+        case 'bmp':
+        case 'gif':
+        case 'dds':
+        case 'mp4':
+        case 'png':
+            reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                    newTexture = new THREE.ImageUtils.loadTexture(event.target.result, {}, function(newTexture)
+                    {
+                        img = document.getElementById("textureImage");
+
+                        img.addEventListener( "load" , function()
+                        {
+                            animationViewer.InstanceMesh(animationViewer.geometry);
+                        });
+                        animationViewer.SetTexture(newTexture);
+                        img.src = event.target.result;
+                        img.style.width = 256;
+                        img.style.width = 256;
+
+                    });
+            }, false );
+
+
+            reader.readAsDataURL( file );
+
+
+            break;
+        case 'babylon':
+
+            reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+                var json = JSON.parse( contents );
+
+                var loader = new THREE.BabylonLoader();
+                var scene = loader.parse( json );
+
+                animationViewer.SetScene( scene );
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        case 'ctm':
+            reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                var stream = new CTM.Stream( contents );
+                stream.offset = 0;
+
+                var loader = new THREE.CTMLoader();
+                loader.createModelClassic( new CTM.File( stream ), function( geometry )
+                {
+                    geometry.sourceType = "ctm";
+                    geometry.sourceFile = file.name;
+                    var material = new THREE.MeshPhongMaterial();
+                    var mesh = new THREE.Mesh( geometry, material );
+                    mesh.name = filename;
+                    animationViewer.AddObject( mesh );
+                } );
+            }, false );
+            reader.readAsBinaryString( file );
+            break;
+        case 'dae':
+            reader = new FileReader();
+            reader.addEventListener('load', function(event)
+            {
+
+                var contents = event.target.result;
+
+                var parser = new DOMParser();
+                var xml = parser.parseFromString( contents, 'text/xml' );
+
+                var loader = new THREE.ColladaLoader();
+                loader.parse(xml, function (collada)
+                {
+                    collada.scene.name = filename;
+                    animationViewer.AddObject( collada.scene, collada.skins);
+                });
+            }, false);
+            reader.readAsText(file);
+            break;
+
+        case 'js':
+        case 'json':
+        case '3geo':
+        case '3mat':
+        case '3obj':
+        case '3scn':
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+                var contents = event.target.result;
+                if ( contents.indexOf( 'postMessage' ) !== -1 ) {
+                    var blob = new Blob( [ contents ], { type: 'text/javascript' } );
+                    var url = URL.createObjectURL( blob );
+                    var worker = new Worker( url );
+                    worker.onmessage = function ( event ) {
+                        event.data.metadata = { version: 2 };
+                        handleJSON( event.data, file, filename, parentParam);
+                    };
+
+                    worker.postMessage( Date.now() );
+
+                    return;
+
+                }
+
+                var data;
+
+                try {
+
+                    data = JSON.parse( contents );
+
+                } catch ( error ) {
+
+                    alert( error );
+                    return;
+
+                }
+
+                handleJSON( data, file, filename, parentParam);
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        case 'obj':
+
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                var object = new THREE.OBJLoader().parse( contents );
+                object.name = filename;
+
+                animationViewer.AddObject( object );
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        case 'ply':
+
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                console.log( contents );
+
+                var geometry = new THREE.PLYLoader().parse( contents );
+                geometry.sourceType = "ply";
+                geometry.sourceFile = file.name;
+
+                var material = new THREE.MeshPhongMaterial();
+
+                var mesh = new THREE.Mesh( geometry, material );
+                mesh.name = filename;
+
+                animationViewer.AddObject( mesh );
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        case 'stl':
+
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                var geometry = new THREE.STLLoader().parse( contents );
+                geometry.sourceType = "stl";
+                geometry.sourceFile = file.name;
+
+                var material = new THREE.MeshPhongMaterial();
+
+                var mesh = new THREE.Mesh( geometry, material );
+                mesh.name = filename;
+
+                animationViewer.AddObject( mesh, parentParam);
+
+            }, false );
+
+            if ( reader.readAsBinaryString !== undefined ) {
+
+                reader.readAsBinaryString( file );
+
+            } else {
+
+                reader.readAsArrayBuffer( file );
+
+            }
+
+            break;
+
+        /*
+         case 'utf8':
+
+         var reader = new FileReader();
+         reader.addEventListener( 'load', function ( event ) {
+
+         var contents = event.target.result;
+
+         var geometry = new THREE.UTF8Loader().parse( contents );
+         var material = new THREE.MeshLambertMaterial();
+
+         var mesh = new THREE.Mesh( geometry, material );
+
+         animationViewer.AddObject( mesh );
+
+         }, false );
+         reader.readAsBinaryString( file );
+
+         break;
+         */
+
+        case 'vtk':
+
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                var geometry = new THREE.VTKLoader().parse( contents );
+                geometry.sourceType = "vtk";
+                geometry.sourceFile = file.name;
+
+                var material = new THREE.MeshPhongMaterial();
+
+                var mesh = new THREE.Mesh( geometry, material );
+                mesh.name = filename;
+
+                animationViewer.AddObject( mesh, parentParam);
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        case 'wrl':
+
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+
+                var contents = event.target.result;
+
+                var result = new THREE.VRMLLoader().parse( contents );
+
+                animationViewer.SetScene( result );
+
+            }, false );
+            reader.readAsText( file );
+
+            break;
+
+        default:
+
+            alert( 'Unsupported file format.' );
+
+            break;
+
+    }
+
+};
+
+var handleJSON = function (data, file, filename, parentParam)
+{
+
+    if ( data.metadata === undefined ) { // 2.0
+
+        data.metadata = { type: 'Geometry' };
+
+    }
+
+    if ( data.metadata.type === undefined ) { // 3.0
+
+        data.metadata.type = 'Geometry';
+
+    }
+
+    if ( data.metadata.version === undefined ) {
+
+        data.metadata.version = data.metadata.formatVersion;
+
+    }
+
+    if ( data.metadata.type.toLowerCase() === 'geometry' ) {
+
+        var loader = new THREE.JSONLoader();
+        var result = loader.parse( data );
+
+        var geometry = result.geometry;
+        var material = result.materials !== undefined
+                ? new THREE.MeshFaceMaterial( result.materials )
+                : new THREE.MeshPhongMaterial();
+
+        geometry.sourceType = "ascii";
+        geometry.sourceFile = file.name;
+
+        var mesh = new THREE.Mesh( geometry, material );
+        mesh.name = filename;
+
+        animationViewer.AddObject( mesh, parentParam );
+
+    } else if ( data.metadata.type.toLowerCase() === 'object' ) {
+
+        var loader = new THREE.ObjectLoader();
+        var result = loader.parse( data );
+
+        if ( result instanceof THREE.Scene ) {
+
+            animationViewer.SetScene( result );
+
+        } else {
+
+            animationViewer.AddObject( result, parentParam );
+
+        }
+
+    } else if ( data.metadata.type.toLowerCase() === 'scene' ) {
+
+        // DEPRECATED
+
+        var loader = new THREE.SceneLoader();
+        loader.parse( data, function ( result ) {
+
+            animationViewer.SetScene( result.scene );
+
+        }, '' );
+
+    }
+
+};
+</script>
+</body>
+</html>
+

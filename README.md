@@ -8,10 +8,10 @@ Copyright 2014 Black Tower Entertainment LLC
 
  
  Animation Viewer
- ------------------------------------
-  An HTML5 webpage that allows the user to load THREE.js animated models.
+-------------------------
+An HTML5 webpage that allows the user to load THREE.js animated models.
   
  
  MayaThreeExporter
- ------------------------------------
-  A THREE.js animated model exporter for Maya. 
+-------------------------
+A THREE.js animated model exporter for Maya. 

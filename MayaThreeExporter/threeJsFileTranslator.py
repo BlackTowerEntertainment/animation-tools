@@ -71,7 +71,13 @@ class ThreeJsError(Exception):
 class ThreeJsWriter(object):
     def __init__(self):
         self.componentKeys = ['vertices', 'normals', 'colors', 'uvs', 'materials', 'faces', "animation", "bones", "skinWeights", "skinIndices"]
-
+    
+        self.vertices = []
+        self.normals = []
+        self.skinWeights = []
+        self.skinIndices = []
+        
+        
     def _parseOptions(self, optionsString):
         self.options = dict([(x, False) for x in self.componentKeys])
         optionsString = optionsString[2:] # trim off the "0;" that Maya adds to the options string
@@ -138,6 +144,7 @@ class ThreeJsWriter(object):
                 while len(uvLayers) > len(self.uvs):
                     self.uvs.append([])
                     self.offsets['uvs'].append(0)
+                    
                 for i, layer in enumerate(uvLayers):
                     uList = MFloatArray()
                     vList = MFloatArray()
@@ -161,40 +168,50 @@ class ThreeJsWriter(object):
         # export face data
         if not options['vertices']:
             return
-            
+        
+        
         bitmask = self._getTypeBitmask(options)
         iterPolys = MItMeshPolygon(dagPath, component)
         while not iterPolys.isDone():
             self.faces.append(bitmask)
+            
             # export face vertices
+            vertIndexOffset = self.offsets['vertices'] / 3
             verts = MIntArray()
             iterPolys.getVertices(verts)
             for i in xrange(verts.length()):
-                self.faces.append(verts[i] + self.offsets['vertices'])
+                self.faces.append(verts[i] + vertIndexOffset)
+                
             # export face vertex materials
             if options['materials']:
                 if materialIndices.length():
                     self.faces.append(materialIndices[iterPolys.index()])
+                    
             # export face vertex uvs
             if options['uvs']:
                 util = MScriptUtil()
                 uvPtr = util.asIntPtr()
                 for i, layer in enumerate(uvLayers):
+                    uvIndexOffset = self.offsets['uvs'][i] / 2
                     for j in xrange(verts.length()):
                         iterPolys.getUVIndex(j, uvPtr, layer)
                         uvIndex = util.getInt(uvPtr)
-                        self.faces.append(uvIndex + self.offsets['uvs'][i])
+                        self.faces.append(uvIndex + uvIndexOffset)
+                        
             # export face vertex normals
             if options['normals']:
+                normalIndexOffset = self.offsets['normals'] / 3
                 for i in xrange(3):
                     normalIndex = iterPolys.normalIndex(i)
-                    self.faces.append(normalIndex + self.offsets['normals'])
+                    self.faces.append(normalIndex + normalIndexOffset)
+                    
             # export face vertex colors
             if options['colors']:
+                colorIndexOffset = self.offsets['colors'] / 3
                 colors = MIntArray()
                 iterPolys.getColorIndices(colors)
                 for i in xrange(colors.length()):
-                    self.faces.append(colors[i] + self.offsets['colors'])
+                    self.faces.append(colors[i] + colorIndexOffset)
             iterPolys.next()
 
     def _getParentDAGPath(self, childDAGPath):
@@ -213,7 +230,7 @@ class ThreeJsWriter(object):
         return parentDagPath
 
     # See http://download.autodesk.com/us/maya/2011help/API/class_m_fn_ik_joint.html
-    def _getInfluenceData(self, DAGPath, space):
+    def _getInfluenceData(self, influenceDAGLookUp, DAGPath, space):
         scaleUtil = MScriptUtil()
         scaleUtil.createFromDouble(1.0, 1.0, 1.0)
         scalePtr = scaleUtil.asDoublePtr()
@@ -249,7 +266,7 @@ class ThreeJsWriter(object):
         # the parent's scaling transformation. This defaults to identity.
         parentScaleInv = [1.0, 1.0, 1.0]
         parentDAGPath = self._getParentDAGPath(DAGPath)
-        if(parentDAGPath != None and (parentDAGPath.fullPathName() in self.influenceDAGLookUp)):
+        if(parentDAGPath != None and (parentDAGPath.fullPathName() in influenceDAGLookUp)):
             parentJoint = MFnIkJoint(parentDAGPath)
             parentJoint.getScale(scalePtr)
             
@@ -284,10 +301,12 @@ class ThreeJsWriter(object):
     def _getVertexWeightDictionary(self, infDags, skin):
         infIds = {}
         infs = []
-        for x in xrange(infDags.length()):
+        
+        numInfluences = infDags.length()
+        for x in xrange(numInfluences):
             infPath = infDags[x].fullPathName()
             infId = int(skin.indexForInfluenceObject(infDags[x]))
-            infIds[infId] = x
+            infIds[infId] = self.influenceDAGLookUp[infPath];
             infs.append(infPath)
             # get the MPlug for the weightList and weights attributes
             wlPlug = skin.findPlug('weightList')
@@ -325,172 +344,218 @@ class ThreeJsWriter(object):
         
         return weights
         
-    
-    # This method is responsible for generating all of the animation data.
-    def _exportAnimationData(self, dagPath, object):
-        options = self.options.copy()
+    def _sortInfluencesRecursive(self, influenceDAGLookUp, index, influencesIn, influencesOut):
+      
+        for i in xrange(influencesIn.length()):
+            # Find the parent dag path of this bone
+            parentDagPath = self._getParentDAGPath(influencesIn[i])
+            
+            # Use the DAG lookup to find the index, as maintained in the Maya attribute arrays.
+            parentInfluenceIndex = -1
+            if(parentDagPath.fullPathName() in influenceDAGLookUp):
+                parentInfluenceIndex = influenceDAGLookUp[parentDagPath.fullPathName()]
         
-        if options['animation'] or options['skinWeights']:
-            # Make sure the animation is set to it's starting frame
-            startTime = MAnimControl.animationStartTime()
-            endTime = MAnimControl.animationEndTime()
-            animationFrame = MTime(startTime)
-            MAnimControl.setCurrentTime(animationFrame)
-            
-            # Initialize the animation structures
-            self.skinWeights = []
-            self.skinIndices = []
-            self.bones = []
-            self.animation = {}
-            
-            nodeIter = MItDependencyNodes(MFn.kInvalid)
-            skinNode = None
-            
-            # UPGRADE: Only supports a single skin cluster.
-            while not nodeIter.isDone():
-                obj = nodeIter.item()
-                if(obj.apiType() == MFn.kSkinClusterFilter):
-                    skinNode = obj
-                    break;
-                    
-                nodeIter.next()
-            
-            if not skinNode:
-                print "***FAILED Could not find viable skin cluster."
-                return
+            if(parentInfluenceIndex == index):
+                influencesOut.append(i)
+                self._sortInfluencesRecursive(influenceDAGLookUp, i, influencesIn, influencesOut);
                 
-            skinCluster = MFnSkinCluster(skinNode)
+    def _sortInfluences(self, influenceDAGLookUp, influences):
+        outputArray = []
+        rootIndex = -1
+        
+        for i in xrange(influences.length()):
+            # Find the parent dag path of this bone
+            parentDagPath = self._getParentDAGPath(influences[i])
             
-            # Find all of the influence objects (bones) associated with this skin cluster.
-            influenceDAGs = MDagPathArray()
-            numInfluences = skinCluster.influenceObjects(influenceDAGs)
-            if(numInfluences == 0):
-                print "***ERROR No influence object found for skin cluster."
-                return
-                
-            print numInfluences, "influences found."
-            
-            # Find the number of meshes associated with this cluster. Can only support one mesh.
-            numGeometries = skinCluster.numOutputConnections()
-            if(numGeometries != 1):
-                print "***ERROR Can only support one mesh per skin cluster."
-                return
-                
-            # Create a DAG lookup that allows us to map an influence index to a bone.
-            self.influenceDAGLookUp = {}
-            for i in xrange(numInfluences):
-                self.influenceDAGLookUp[influenceDAGs[i].fullPathName()] = i
-                
-            boneInfluenceIDList = []
-            # Go through all of the influences and build up the initial bone pose information.
-            for i in xrange(numInfluences):
-                bone = {}
-                bone["name"] = influenceDAGs[i].partialPathName()
-                                
-                boneID = skinCluster.indexForInfluenceObject(influenceDAGs[i]);
-                boneInfluenceIDList.append(boneID)
-                
-                space = MSpace.kTransform
-                if (i == 0): 
-                    space = MSpace.kWorld
+            # Use the DAG lookup to find the index, as maintained in the Maya attribute arrays.
+            parentInfluenceIndex = -1
+            if(parentDagPath.fullPathName() in influenceDAGLookUp):
+                parentInfluenceIndex = influenceDAGLookUp[parentDagPath.fullPathName()]
+        
+            if(parentInfluenceIndex == -1):
+                rootIndex = i
+                break
 
-                (bone["pos"], bone["scl"], bone["rot"], bone["rotq"]) = self._getInfluenceData(influenceDAGs[i], space)
+        if(rootIndex < 0):
+            print "***FAILED Could not find root influence index."
+            return outputArray;
+        
+        outputArray.append(rootIndex);
+        
+        self._sortInfluencesRecursive(influenceDAGLookUp, rootIndex, influences, outputArray);
+        return rootIndex;
+        
+    # This method is responsible for generating all of the skin data (weights and indices).
+    def _generateBoneHierarchy(self):
+        
+        jointNames = mc.ls(type="joint", long=True);
+        selectionList = MSelectionList()
+        for name in jointNames:
+            try:
+                selectionList.add( name )
+            except:
+                print "***FAILED to insert joint into selection list: " + name
+                return False
                 
-                # Find the parent dag path of this bone
-                parentDagPath = self._getParentDAGPath(influenceDAGs[i])
-                
-                # Use the DAG lookup to find the index, as maintained in the Maya attribute arrays.
-                parentInfluenceIndex = -1
-                if(parentDagPath.fullPathName() in self.influenceDAGLookUp):
-                    parentInfluenceIndex = self.influenceDAGLookUp[parentDagPath.fullPathName()]
-                
-                bone["parent"] = parentInfluenceIndex
-                self.bones.append(bone)
-                print "   [", i, "](", bone["name"],"), parent [", parentInfluenceIndex,"](", parentDagPath.partialPathName() ,")"
-                
-            # Extract skinWeight and skinIndice data.
-            if options['skinWeights']:
-                tupleInfluenceIDs = tuple(boneInfluenceIDList)
-                weightIndicies = MScriptUtil().createFromList(tupleInfluenceIDs, len(boneInfluenceIDList))
-                    
-                # Build influence dictionary per vertex
-                vertexWeights = self._getVertexWeightDictionary(influenceDAGs, skinCluster);
-                for i in xrange(len(vertexWeights)):
-                    weightDict = vertexWeights[i]
-                    weightList = weightDict.items();
-                    
-                    # Sort the vertex weights in descending order.
-                    weightList.sort(reverse = True, key=lambda tup: tup[1])
-                    weightCount = options['weightCount'] - len(weightList) 
-                    
-                    weightArrayStartingIndex = len(self.skinWeights)
-                    # If this vertex does not have enough weights defined, append (0, 0) influences.
-                    if(weightCount > 0):
-                        while(weightCount):
-                            weightList.append((0,0))
-                            weightCount = weightCount - 1;
-                   
-                    totalVertexWeight = 0.0
-                    for j in xrange(options['weightCount']):
-                        self.skinIndices.append(weightList[j][0])
-                        self.skinWeights.append(weightList[j][1])
-                        totalVertexWeight += weightList[j][1]
-                        
-                    if(totalVertexWeight == 0.0):
-                        totalVertexWeight = 1.0
-                        
-                    # The combined weight of all influences on this vertex should be (at least) 1.0.
-                    # If it is not apply the difference to each of the weights.
-                    if(totalVertexWeight < 1.0):
-                        residualWeight = 1.0 - totalVertexWeight
-                        for j in xrange(options['weightCount']):
-                            weightRatio = self.skinWeights[weightArrayStartingIndex+j] / totalVertexWeight
-                            self.skinWeights[weightArrayStartingIndex+j] = self.skinWeights[weightArrayStartingIndex+j] + residualWeight * weightRatio
-                                
+        numInfluences = selectionList.length();
+        self.influenceDAGs = MDagPathArray()
+        for i in xrange(numInfluences):
+            dagPath = MDagPath()
+            selectionList.getDagPath( i, dagPath )
+            self.influenceDAGs.append(dagPath);
             
-            # Extract animation data
-            if options['animation']:
-                print "Building animation set [", startTime.value(), ",", endTime.value(), "]"
-                animationFrameRange = int(endTime.value() - startTime.value())
-                
-                frameRateUnits = startTime.unit()
-                if frameRateUnits in kFrameRateLookup:
-                    self.animation["fps"] = kFrameRateLookup[frameRateUnits]
-                else:
-                    print "***FAILED Could not find matching framerate for unit enumeration", frameRateUnits
-                    return
-                
-                print "Frame Rate:", self.animation['fps']
-                
-                framePeriod = 1.0 / self.animation['fps']
-                self.animation["length"] = framePeriod * animationFrameRange
-                self.animation["JIT"] = 0
-                self.animation["name"] = "animation_1"
-                self.animation["hierarchy"] = []
-                
-                #
-                # Build the animation hierarchy. This creates an array of bones. Each bone is itself an array of all the transformations
-                # applied by each frame of the animation.
-                #
-                for boneIndex in xrange(numInfluences):
-                    boneAnimation = {}
-                    boneAnimation["parent"] = self.bones[boneIndex]["parent"]
-                    boneAnimation["keys"] = []
-                    space = MSpace.kTransform
-                    if (boneIndex == 0): 
-                        space = MSpace.kWorld
-                    
-                    for frameIndex in xrange(animationFrameRange+1):
-                        animationTime = MTime(frameIndex + int(startTime.value()), frameRateUnits)
-                        MAnimControl.setCurrentTime(animationTime)
-                        
-                        keyFrame = {}
-                        keyFrame["time"] = frameIndex * framePeriod 
-                        
-                        (keyFrame["pos"], keyFrame["scl"], rot, keyFrame["rot"]) = self._getInfluenceData(influenceDAGs[boneIndex], space)
-                        boneAnimation["keys"].append(keyFrame)
-                    self.animation["hierarchy"].append(boneAnimation)
+        # Create a DAG lookup that allows us to map an influence index to a bone.
+        self.influenceDAGLookUp = {}
+        for i in xrange(len(jointNames)):
+            self.influenceDAGLookUp[jointNames[i]] = i
+            
+        self.rootBoneIndex = self._sortInfluences(self.influenceDAGLookUp, self.influenceDAGs)
+        
+        # Go through all of the influences and build up the initial bone pose information.
+        for i in xrange(numInfluences):
+            bone = {}
+            bone["name"] = self.influenceDAGs[i].partialPathName()
+            
+            space = MSpace.kTransform
+            if(i == self.rootBoneIndex): 
+                space = MSpace.kWorld
 
+            (bone["pos"], bone["scl"], bone["rot"], bone["rotq"]) = self._getInfluenceData(self.influenceDAGLookUp, self.influenceDAGs[i], space)
+            
+            # Find the parent dag path of this bone
+            parentDagPath = self._getParentDAGPath(self.influenceDAGs[i])
+            
+            # Use the DAG lookup to find the index, as maintained in the Maya attribute arrays.
+            parentInfluenceIndex = -1
+            if(parentDagPath.fullPathName() in self.influenceDAGLookUp):
+                parentInfluenceIndex = self.influenceDAGLookUp[parentDagPath.fullPathName()]
+            
+            bone["parent"] = parentInfluenceIndex
+            self.bones.append(bone)
+            print "   [", i, "](", bone["name"],"), parent [", parentInfluenceIndex,"](", parentDagPath.partialPathName() ,")"
+            
+    # This method is responsible for generating all of the skin data (weights and indices).
+    def _exportSkinData(self, dagPath, object):
+        options = self.options.copy()
+        skinCluster = None
+        iterDg = MItDependencyGraph(object, MItDependencyGraph.kDownstream, MItDependencyGraph.kPlugLevel)
+        while not iterDg.isDone():
+            currentItem = iterDg.currentItem()
+            if(currentItem.apiType() == MFn.kSkinClusterFilter):
+                skinCluster = MFnSkinCluster(currentItem)
+                break
+                
+            iterDg.next()
+        
+        if not skinCluster:
+            print "***FAILED Could not find viable skin cluster."
+            return
+        
+        # Find all of the influence objects (bones) associated with this skin cluster.
+        influenceDAGs = MDagPathArray()
+        numInfluences = skinCluster.influenceObjects(influenceDAGs)
+        if(numInfluences == 0):
+            print "***ERROR No influence object found for skin cluster."
+            return
+            
+        print numInfluences, "skin influences found."
+        
+        # Find the number of meshes associated with this cluster. Can only support one mesh.
+        numGeometries = skinCluster.numOutputConnections()
+        if(numGeometries != 1):
+            print "***ERROR Can only support one mesh per skin cluster."
+            return
+            
+        # Build influence dictionary per vertex
+        vertexWeights = self._getVertexWeightDictionary(influenceDAGs, skinCluster);
+        for i in xrange(len(vertexWeights)):
+            weightDict = vertexWeights[i]
+            weightList = weightDict.items();
+            
+            # Sort the vertex weights in descending order.
+            weightList.sort(reverse = True, key=lambda tup: tup[1])
+            weightCount = options['weightCount'] - len(weightList) 
+            
+            weightArrayStartingIndex = len(self.skinWeights)
+            # If this vertex does not have enough weights defined, append (0, 0) influences.
+            if(weightCount > 0):
+                while(weightCount):
+                    weightList.append((0,0))
+                    weightCount = weightCount - 1;
+           
+            totalVertexWeight = 0.0
+            for j in xrange(self.options['weightCount']):
+                self.skinIndices.append(weightList[j][0])
+                self.skinWeights.append(weightList[j][1])
+                totalVertexWeight += weightList[j][1]
+                
+            if(totalVertexWeight == 0.0):
+                totalVertexWeight = 1.0
+                
+            # The combined weight of all influences on this vertex should be (at least) 1.0.
+            # If it is not apply the difference to each of the weights.
+            if(totalVertexWeight < 1.0):
+                residualWeight = 1.0 - totalVertexWeight
+                for j in xrange(self.options['weightCount']):
+                    weightRatio = self.skinWeights[weightArrayStartingIndex+j] / totalVertexWeight
+                    self.skinWeights[weightArrayStartingIndex+j] = self.skinWeights[weightArrayStartingIndex+j] + residualWeight * weightRatio
+
+    # This method is responsible for generating all of the animation data. 
+    def _exportAnimationData(self):
+        
+        # Make sure the animation is set to it's starting frame
+        startTime = MAnimControl.animationStartTime()
+        endTime = MAnimControl.animationEndTime()
+        animationFrame = MTime(startTime)
+        MAnimControl.setCurrentTime(animationFrame)
+        
+        # Initialize the animation structures
+        self.animation = {}
+        
+        # Extract animation data
+        print "Building animation set [", startTime.value(), ",", endTime.value(), "]"
+        animationFrameRange = int(endTime.value() - startTime.value())
+        
+        frameRateUnits = startTime.unit()
+        if frameRateUnits in kFrameRateLookup:
+            self.animation["fps"] = 24.0 * MAnimControl.playbackSpeed();
+        else:
+            print "***FAILED Could not find matching framerate for unit enumeration", frameRateUnits
+            return
+        
+        print "Frame Rate:", self.animation['fps']
+        
+        framePeriod = 1.0 / self.animation['fps']
+        self.animation["length"] = framePeriod * animationFrameRange
+        self.animation["JIT"] = 0
+        self.animation["name"] = "animation_1"
+        self.animation["hierarchy"] = []
+        
+        #
+        # Build the animation hierarchy. This creates an array of bones. Each bone is itself an array of all the transformations
+        # applied by each frame of the animation.
+        #
+        for boneIndex in xrange(len(self.bones)):
+            infleunceDAG = self.influenceDAGs[boneIndex];
+        
+            boneAnimation = {}
+            boneAnimation["parent"] = self.bones[boneIndex]["parent"]
+            boneAnimation["keys"] = []
+            space = MSpace.kTransform
+            if(boneIndex == self.rootBoneIndex): 
+                space = MSpace.kWorld
+            
+            for frameIndex in xrange(animationFrameRange+1):
+                animationTime = MTime(frameIndex + int(startTime.value()), frameRateUnits)
+                MAnimControl.setCurrentTime(animationTime)
+                
+                keyFrame = {}
+                keyFrame["time"] = frameIndex * framePeriod 
+                
+                (keyFrame["pos"], keyFrame["scl"], rot, keyFrame["rot"]) = self._getInfluenceData(self.influenceDAGLookUp, infleunceDAG, space)
+                boneAnimation["keys"].append(keyFrame)
+                
+            self.animation["hierarchy"].append(boneAnimation)
                 
     def _exportMeshes(self):
         selectedMesh = []
@@ -509,11 +574,9 @@ class ThreeJsWriter(object):
             print "*** No mesh selected. Quitting export."
             return
             
-        if(len(selectedMesh) > 1):
-            print "*** Exporting can only be performed on a single mesh. Quitting export."
-            return
-            
-        print "Selected Items:", selectedMesh[0]
+        print "Selected Items:"
+        for mesh in selectedMesh:
+            print " - " + mesh
         
         # If the model is animated, then set the frame to the starting frame.
         if self.options['animation']:
@@ -522,32 +585,52 @@ class ThreeJsWriter(object):
             animationFrame = MTime(startTime)
             MAnimControl.setCurrentTime(animationFrame)
         
+        # If we are exporting animations or weights generate the bone hierarchy.
+        if self.options['animation'] or self.options['skinWeights']:
+            self._generateBoneHierarchy();
+        
         # duplicate the mesh and convert all faces to triangles.
         duplicatedMesh = mc.duplicate(selectedMesh)
-        mc.polyTriangulate(duplicatedMesh[0])
+        for mesh in duplicatedMesh:
+            mc.polyTriangulate(mesh)
         
-        # Select the duplicate as the active mesh
-        mc.select(duplicatedMesh[0])
-        sel = MSelectionList()
-        MGlobal.getActiveSelectionList(sel)
-        mDag = MDagPath()
-        mObj = MObject()
-        sel.getDagPath(0, mDag, mObj)
-                
-        self._exportGeometryData(mDag, mObj)
+            # Select the duplicate as the active mesh
+            mc.select(mesh)
+            sel = MSelectionList()
+            MGlobal.getActiveSelectionList(sel)
+            mDag = MDagPath()
+            mObj = MObject()
+            sel.getDagPath(0, mDag, mObj)
+                    
+            self._exportGeometryData(mDag, mObj)
         
-        # Delete the duplicate since we are done with it.
-        mc.delete(duplicatedMesh[0])
+            # Delete the duplicate since we are done with it.
+            mc.delete(mesh)
         
         # Select the original mesh and get a DAG for animation processing.
-        mc.select(selectedMesh[0]);
-        sel = MSelectionList()
-        MGlobal.getActiveSelectionList(sel)
-        mDag = MDagPath()
-        mObj = MObject()
-        sel.getDagPath(0, mDag, mObj)
+        if self.options['animation'] or self.options['skinWeights']:
+            for mesh in selectedMesh:
+            
+                relatives= mc.listRelatives(mesh, shapes=True)
+                if(len(relatives) == 0):
+                    print "*** Could not find mesh for selection [" + mesh + "]"
+                    continue
+                    
+                print "Found Mesh in Selection: " + relatives[0]
+            
+                mc.select(relatives[0]);
+                sel = MSelectionList()
+                MGlobal.getActiveSelectionList(sel)
+                
+                mDag = MDagPath()
+                mObj = MObject()
+                sel.getDependNode(0, mObj)
+                sel.getDagPath(0, mDag)
+                
+                self._exportSkinData(mDag, mObj)
         
-        self._exportAnimationData(mDag, mObj)
+        if self.options['animation']:
+            self._exportAnimationData();
     
         
         

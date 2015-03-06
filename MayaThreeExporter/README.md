@@ -44,3 +44,5 @@ Usage
 4. Under the Mesh options, check ‘Skin Weights’.
 5. Under the Animation options, check ‘Animations’.
 6. Click export.
+
+NOTE: The exported has only been tested up to Maya 2012. The exported may not be supported by later versions of Maya. 

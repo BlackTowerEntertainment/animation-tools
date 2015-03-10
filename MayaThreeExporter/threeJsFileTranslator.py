@@ -113,6 +113,9 @@ class ThreeJsWriter(object):
         options = self.options.copy()
         self._updateOffsets()
 
+        print ""
+        print "--- Exporting Geometry Data ----------"
+        
         # export vertex data
         if options['vertices']:
             try:
@@ -124,6 +127,8 @@ class ThreeJsWriter(object):
             except:
                 options['vertices'] = False
 
+        print "Total Vertices:", len(self.vertices) / 3
+                
         # export material data
         # TODO: actually parse material data
         materialIndices = MIntArray()
@@ -136,6 +141,8 @@ class ThreeJsWriter(object):
             except:
                 self.materials = [{}]
 
+        print "Total Materials:", len(self.materials)
+                
         # export uv data
         if options['uvs']:
             try:
@@ -154,6 +161,12 @@ class ThreeJsWriter(object):
             except:
                 options['uvs'] = False
 
+        print "Total UV layers:", len(uvLayers)
+        totalUVs = 0
+        print "Total UVs:"
+        for i in xrange(len(uvLayers)):
+            print "  '" + uvLayers[i] + "':", len(self.uvs[i]) / 2;
+                
         # export normal data
         if options['normals']:
             try:
@@ -165,10 +178,11 @@ class ThreeJsWriter(object):
             except:
                 options['normals'] = False
         
+        print "Total Normals:", len(self.normals) / 3
+        
         # export face data
         if not options['vertices']:
             return
-        
         
         bitmask = self._getTypeBitmask(options)
         iterPolys = MItMeshPolygon(dagPath, component)
@@ -197,7 +211,7 @@ class ThreeJsWriter(object):
                         iterPolys.getUVIndex(j, uvPtr, layer)
                         uvIndex = util.getInt(uvPtr)
                         self.faces.append(uvIndex + uvIndexOffset)
-                        
+                       
             # export face vertex normals
             if options['normals']:
                 normalIndexOffset = self.offsets['normals'] / 3
@@ -388,6 +402,9 @@ class ThreeJsWriter(object):
     # This method is responsible for generating all of the skin data (weights and indices).
     def _generateBoneHierarchy(self):
         
+        print ""
+        print "--- Generating Bone Hierarchy -------"
+        
         jointNames = mc.ls(type="joint", long=True);
         selectionList = MSelectionList()
         for name in jointNames:
@@ -436,6 +453,10 @@ class ThreeJsWriter(object):
             
     # This method is responsible for generating all of the skin data (weights and indices).
     def _exportSkinData(self, dagPath, object):
+    
+        print ""
+        print "--- Exporting Skin Data --------------"
+    
         options = self.options.copy()
         skinCluster = None
         iterDg = MItDependencyGraph(object, MItDependencyGraph.kDownstream, MItDependencyGraph.kPlugLevel)
@@ -503,6 +524,9 @@ class ThreeJsWriter(object):
     # This method is responsible for generating all of the animation data. 
     def _exportAnimationData(self):
         
+        print ""
+        print "--- Exporting Animation Data ---------"
+                
         # Make sure the animation is set to it's starting frame
         startTime = MAnimControl.animationStartTime()
         endTime = MAnimControl.animationEndTime()
@@ -601,7 +625,6 @@ class ThreeJsWriter(object):
             mDag = MDagPath()
             mObj = MObject()
             sel.getDagPath(0, mDag, mObj)
-                    
             self._exportGeometryData(mDag, mObj)
         
             # Delete the duplicate since we are done with it.
@@ -631,8 +654,7 @@ class ThreeJsWriter(object):
         
         if self.options['animation']:
             self._exportAnimationData();
-    
-        
+            
         
     def write(self, path, optionString, accessMode):
         self.path = path
